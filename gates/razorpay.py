@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Razorpay Gate - Production Only
-UNLIMITED CREDITS - No limits
+Razorpay Gate - ₹10 PER CARD CHECK
+REAL CHARGES ONLY
 """
 
 import logging
@@ -12,7 +12,7 @@ from typing import Optional, Dict, Tuple
 logger = logging.getLogger(__name__)
 
 class RazorpayGate:
-    """Razorpay gateway - UNLIMITED CREDITS"""
+    """Razorpay payment gateway - ₹10 PER CHECK"""
     
     def __init__(self, key_id: Optional[str] = None, key_secret: Optional[str] = None):
         """Initialize with LIVE keys ONLY"""
@@ -20,19 +20,16 @@ class RazorpayGate:
         self.key_secret = key_secret or os.getenv("RAZORPAY_KEY_SECRET")
         
         if not self.key_id or not self.key_secret:
-            raise ValueError(
-                "❌ PRODUCTION ERROR: RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET required!\n"
-                "Add LIVE keys to Railway Variables"
-            )
+            raise ValueError("RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET required!")
         
         self.API_BASE = "https://api.razorpay.com/v1"
-        logger.info("✅ Razorpay PRODUCTION initialized (UNLIMITED CREDITS)")
+        self.PRICE_PER_CHECK = 1000  # ₹10 in paise
+        logger.info("✅ Razorpay PRODUCTION: ₹10 per check")
     
     async def check_card_live(self, card_number: str, month: str, year: str, cvv: str) -> Tuple[str, str]:
-        """PRODUCTION: Real Razorpay card validation"""
+        """Real Razorpay card validation"""
         try:
             bin_code = card_number[:6]
-            
             response = requests.get(
                 f"{self.API_BASE}/iins",
                 params={"iins": bin_code},
@@ -53,7 +50,6 @@ class RazorpayGate:
             brand_map = {"visa": "Visa", "mastercard": "Mastercard", "amex": "Amex"}
             card_brand = brand_map.get(card_type.lower(), card_type.title())
             
-            # Check expiry
             current_year, current_month = 26, 7
             exp_month, exp_year = int(month), int(year)
             
@@ -67,14 +63,11 @@ class RazorpayGate:
             logger.error(f"❌ Error: {e}")
             return f"❌ <b>ERROR</b> - {str(e)}", "ERROR"
     
-    def get_plans(self) -> Dict:
-        """UNLIMITED CREDITS - No limits"""
-        return {
-            "plan_unlimited": {
-                "name": "Unlimited",
-                "amount": 0,
-                "credits": float('inf'),
-                "description": "Unlimited card checks"
-            }
-        }
+    def get_price_per_check(self) -> int:
+        """Get price per check in paise"""
+        return self.PRICE_PER_CHECK
+    
+    def is_enabled(self) -> bool:
+        """Check if enabled"""
+        return bool(self.key_id and self.key_secret)
 
