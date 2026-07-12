@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Razorpay Gate - Production Only
-FREE PLAN ONLY - No Premium/Diamond
+UNLIMITED CREDITS - No limits
 """
 
 import logging
@@ -12,7 +12,7 @@ from typing import Optional, Dict, Tuple
 logger = logging.getLogger(__name__)
 
 class RazorpayGate:
-    """Razorpay gateway - FREE PLAN ONLY"""
+    """Razorpay gateway - UNLIMITED CREDITS"""
     
     def __init__(self, key_id: Optional[str] = None, key_secret: Optional[str] = None):
         """Initialize with LIVE keys ONLY"""
@@ -26,7 +26,7 @@ class RazorpayGate:
             )
         
         self.API_BASE = "https://api.razorpay.com/v1"
-        logger.info("✅ Razorpay PRODUCTION initialized (FREE PLAN ONLY)")
+        logger.info("✅ Razorpay PRODUCTION initialized (UNLIMITED CREDITS)")
     
     async def check_card_live(self, card_number: str, month: str, year: str, cvv: str) -> Tuple[str, str]:
         """PRODUCTION: Real Razorpay card validation"""
@@ -68,13 +68,13 @@ class RazorpayGate:
             return f"❌ <b>ERROR</b> - {str(e)}", "ERROR"
     
     def get_plans(self) -> Dict:
-        """FREE PLAN ONLY - No Premium/Diamond"""
+        """UNLIMITED CREDITS - No limits"""
         return {
-            "plan_free": {
-                "name": "Free",
+            "plan_unlimited": {
+                "name": "Unlimited",
                 "amount": 0,
-                "credits": 25,
-                "description": "Get started free"
+                "credits": float('inf'),
+                "description": "Unlimited card checks"
             }
         }
 

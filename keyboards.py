@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Keyboards Module - FREE PLAN ONLY
-No Premium/Diamond buttons
+Keyboards Module - UNLIMITED CREDITS
 """
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -34,9 +33,9 @@ def back_button() -> InlineKeyboardMarkup:
     ])
 
 def plans_keyboard() -> InlineKeyboardMarkup:
-    """FREE PLAN ONLY - No Premium/Diamond"""
+    """UNLIMITED CREDITS"""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎁 Free Plan - 25 Credits", callback_data="plan_free")],
+        [InlineKeyboardButton(text="∞ Unlimited Credits", callback_data="plan_unlimited")],
         [InlineKeyboardButton(text="◀️ Back", callback_data="back")],
     ])
 
