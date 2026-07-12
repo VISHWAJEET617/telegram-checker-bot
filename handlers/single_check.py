@@ -1,15 +1,23 @@
 #!/usr/bin/env python3
 """
-Single Check Handler - Single Card Verification
-/rz command processor with real validation
+Single Check Handler - Single Card Verification (Production Level)
+/rz command processor with real Razorpay validation
 """
 
 import logging
+import os
 from aiogram import types
 from utils import validate_card, format_card, get_card_brand, sanitize_input
 from keyboards import help_keyboard, plans_keyboard
+from gates.razorpay import RazorpayGate
 
 logger = logging.getLogger(__name__)
+
+# Initialize Razorpay gate
+razorpay = RazorpayGate(
+    key_id=os.getenv("RAZORPAY_KEY_ID"),
+    key_secret=os.getenv("RAZORPAY_KEY_SECRET")
+)
 
 async def single_check_handler(message: types.Message, db):
     """Single card check command /rz"""
@@ -32,7 +40,7 @@ async def single_check_handler(message: types.Message, db):
     card = sanitize_input(args[1].strip())
     user_id = message.from_user.id
     
-    # Validate card format
+    # Validate card format (basic validation)
     is_valid, validation_msg = validate_card(card)
     
     if not is_valid:
@@ -55,6 +63,10 @@ async def single_check_handler(message: types.Message, db):
     # Extract card parts
     card_parts = card.split("|")
     card_num = card_parts[0]
+    month = card_parts[1]
+    year = card_parts[2]
+    cvv = card_parts[3]
+    
     card_brand = get_card_brand(card_num)
     formatted_card = format_card(card)
     card_last4 = card_num[-4:]
@@ -65,12 +77,15 @@ async def single_check_handler(message: types.Message, db):
         f"{card_brand}\n"
         f"Card: {formatted_card}\n"
         f"Status: 🔄 Processing...\n"
-        f"Credits used: 1"
+        f"Credits used: 1\n\n"
+        f"This may take 2-3 seconds..."
     )
     
     try:
-        # Perform actual card validation
-        result, status = await check_card(card_num, card_parts[1], card_parts[2], card_parts[3])
+        logger.info(f"Starting card check for user {user_id}: {card_num[:6]}****")
+        
+        # Perform PRODUCTION card validation via Razorpay
+        result, status = await check_card_production(card_num, month, year, cvv)
         
         # Deduct credit
         db.update_credits(user_id, -1)
@@ -90,43 +105,40 @@ async def single_check_handler(message: types.Message, db):
         logger.info(f"Card check completed for user {user_id}: {status}")
     
     except Exception as e:
-        logger.error(f"Card check error: {e}")
+        logger.error(f"Card check error: {e}", exc_info=True)
         await message.answer(f"❌ <b>Error!</b>\n\n{str(e)}")
 
-async def check_card(card_num: str, month: str, year: str, cvv: str) -> tuple:
+async def check_card_production(card_num: str, month: str, year: str, cvv: str) -> tuple:
     """
-    Perform actual card validation
+    PRODUCTION-LEVEL CARD VALIDATION
     
-    In production, integrate with:
-    - Stripe API: stripe.com/docs/api/test_helpers/test_bank_accounts
-    - Payment gateway: Razorpay, 2Checkout, etc.
+    Uses Razorpay API for real card validation
     
-    Returns: (result_text, status)
+    Features:
+    - Validates card BIN (first 6 digits)
+    - Checks if card is active
+    - Verifies expiry date
+    - Detects card type (Visa, MC, Amex, Discover)
+    - Handles errors gracefully
+    
+    Args:
+        card_num: Full card number
+        month: Expiry month (MM)
+        year: Expiry year (YY)
+        cvv: CVV code
+    
+    Returns:
+        Tuple of (result_text, status) where status is ALIVE/DEAD/UNKNOWN/ERROR
     """
     try:
-        # Simulate card checking logic
-        # In real implementation, call actual payment processor API
+        logger.info(f"Production card check: {card_num[:6]}****")
         
-        # Basic validation already done in utils.validate_card()
-        # This is where you'd call Stripe, Razorpay, etc.
+        # Call real Razorpay validation
+        result, status = await razorpay.check_card_live(card_num, month, year, cvv)
         
-        # For now, simulate realistic results based on card number
-        first_digit = card_num[0]
-        
-        if first_digit == '4':
-            # Visa - higher success rate in real scenarios
-            if card_num.endswith('0000'):
-                return "❌ <b>DEAD</b> - Card declined", "DEAD"
-            else:
-                return "✅ <b>ALIVE</b> - Card valid", "ALIVE"
-        elif first_digit == '5':
-            # Mastercard
-            return "✅ <b>ALIVE</b> - Card valid", "ALIVE"
-        else:
-            # Amex, Discover, etc.
-            return "⚠️ <b>UNKNOWN</b> - Card type not fully supported", "UNKNOWN"
+        return result, status
     
     except Exception as e:
-        logger.error(f"Card check error: {e}")
+        logger.error(f"Production check error: {e}", exc_info=True)
         return f"❌ <b>ERROR</b> - {str(e)}", "ERROR"
 
