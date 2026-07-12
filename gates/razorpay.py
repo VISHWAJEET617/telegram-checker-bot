@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Razorpay Gate - Production Only
-REAL CARD VALIDATION, REAL CHARGES ONLY
+FREE PLAN ONLY - No Premium/Diamond
 """
 
 import logging
@@ -12,7 +12,7 @@ from typing import Optional, Dict, Tuple
 logger = logging.getLogger(__name__)
 
 class RazorpayGate:
-    """Razorpay payment gateway - PRODUCTION ONLY"""
+    """Razorpay gateway - FREE PLAN ONLY"""
     
     def __init__(self, key_id: Optional[str] = None, key_secret: Optional[str] = None):
         """Initialize with LIVE keys ONLY"""
@@ -26,7 +26,7 @@ class RazorpayGate:
             )
         
         self.API_BASE = "https://api.razorpay.com/v1"
-        logger.info("✅ Razorpay PRODUCTION initialized")
+        logger.info("✅ Razorpay PRODUCTION initialized (FREE PLAN ONLY)")
     
     async def check_card_live(self, card_number: str, month: str, year: str, cvv: str) -> Tuple[str, str]:
         """PRODUCTION: Real Razorpay card validation"""
@@ -68,10 +68,13 @@ class RazorpayGate:
             return f"❌ <b>ERROR</b> - {str(e)}", "ERROR"
     
     def get_plans(self) -> Dict:
-        """PRODUCTION plans with real pricing"""
+        """FREE PLAN ONLY - No Premium/Diamond"""
         return {
-            "plan_free": {"name": "Free", "amount": 0, "credits": 25},
-            "plan_premium": {"name": "Premium", "amount": 49900, "credits": 5000},
-            "plan_diamond": {"name": "Diamond", "amount": 99900, "credits": float('inf')}
+            "plan_free": {
+                "name": "Free",
+                "amount": 0,
+                "credits": 25,
+                "description": "Get started free"
+            }
         }
 
