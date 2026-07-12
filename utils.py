@@ -9,6 +9,18 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def sanitize_input(text: str) -> str:
+    """Sanitize user input to prevent injection attacks"""
+    if not isinstance(text, str):
+        return ""
+    
+    # Remove any potentially dangerous characters
+    # Keep only alphanumeric, pipe, dash
+    sanitized = re.sub(r'[^a-zA-Z0-9|\-\s]', '', text)
+    
+    # Limit length
+    return sanitized[:100].strip()
+
 def validate_card(card_string: str) -> tuple[bool, str]:
     """
     Validate card format
@@ -120,7 +132,8 @@ def parse_card_list(text: str) -> list[str]:
     cards = []
     for line in text.split('\n'):
         line = line.strip()
-        if line and not line.startswith('#'):  # Skip empty lines and comments
+        # Skip empty lines and comments
+        if line and not line.startswith('#') and not line.startswith('//'):
             cards.append(line)
     return cards
 
@@ -170,4 +183,13 @@ def format_timestamp(timestamp) -> str:
     if isinstance(timestamp, str):
         return timestamp.split()[0]  # Return just date part
     return str(timestamp)
+
+def rate_limit_check(user_id: int, action: str, max_per_minute: int = 5) -> bool:
+    """
+    Simple rate limiting (can be enhanced with Redis)
+    Returns True if action is allowed, False if rate limited
+    """
+    # This is a placeholder - in production, use Redis for rate limiting
+    # For now, always allow
+    return True
 
