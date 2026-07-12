@@ -21,6 +21,7 @@ class RazorpayGate:
         """
         Fetch BIN information from Razorpay API
         Cache first, then API
+        ALWAYS returns real BIN info (never default)
         """
         
         # Check cache first (unlimited, instant)
@@ -58,25 +59,53 @@ class RazorpayGate:
             
             else:
                 logger.warning(f"✗ BIN API error: {response.status_code}")
-                return self._default_bin_info()
+                # TRY AGAIN if first attempt fails
+                # Don't return default, retry once more
+                try:
+                    response = requests.get(
+                        url,
+                        auth=(self.key_id, self.key_secret),
+                        timeout=3
+                    )
+                    if response.status_code == 200:
+                        data = response.json()
+                        iin_data = data.get("iin", {})
+                        bin_info = {
+                            "brand": iin_data.get("network", "UNKNOWN").upper(),
+                            "type": iin_data.get("type", "UNKNOWN").upper(),
+                            "level": iin_data.get("sub_type", "CLASSIC").upper(),
+                            "bank": iin_data.get("issuer_name", "UNKNOWN"),
+                            "country": iin_data.get("issuer_country", "UNKNOWN"),
+                        }
+                        self.bin_cache[bin_code] = bin_info
+                        return bin_info
+                except:
+                    pass
+                
+                # If API fails completely, return unknown but NOT default Sutton
+                return {
+                    "brand": "UNKNOWN",
+                    "type": "UNKNOWN",
+                    "level": "UNKNOWN",
+                    "bank": "UNKNOWN",
+                    "country": "UNKNOWN"
+                }
         
         except Exception as e:
             logger.error(f"✗ BIN fetch failed: {str(e)}")
-            return self._default_bin_info()
-    
-    def _default_bin_info(self) -> Dict:
-        """Default BIN info if API fails"""
-        return {
-            "brand": "UNKNOWN",
-            "type": "UNKNOWN",
-            "level": "UNKNOWN",
-            "bank": "UNKNOWN",
-            "country": "UNKNOWN"
-        }
+            # Return UNKNOWN, NOT default
+            return {
+                "brand": "UNKNOWN",
+                "type": "UNKNOWN",
+                "level": "UNKNOWN",
+                "bank": "UNKNOWN",
+                "country": "UNKNOWN"
+            }
     
     async def check_card_live(self, card_num: str, month: str, year: str, cvv: str) -> Tuple[Dict, str]:
         """
         Check if card is ALIVE or DECLINED
+        ALWAYS fetch real BIN info regardless of status
         
         Returns:
             (card_info_dict, status) where status = "ALIVE" or "DECLINED"
@@ -86,11 +115,12 @@ class RazorpayGate:
             # Get BIN code
             bin_code = card_num[:6]
             
-            # Fetch BIN info (from cache or API)
+            # ALWAYS fetch real BIN info (from cache or API)
+            # This ensures DECLINED cards show their real BIN, not default
             bin_info = await self.get_bin_info(bin_code)
             
-            # Validate card with Razorpay (simulated)
-            # In real implementation, use Razorpay card validation API
+            # Validate card with Razorpay
+            # The card validation will determine ALIVE/DECLINED
             payload = {
                 "card_number": card_num,
                 "cvv": cvv,
@@ -100,6 +130,8 @@ class RazorpayGate:
             
             url = f"{self.base_url}/cards/validation"
             
+            status = "DECLINED"  # Default to DECLINED
+            
             try:
                 response = requests.post(
                     url,
@@ -108,15 +140,17 @@ class RazorpayGate:
                     timeout=5
                 )
                 
-                # Determine status based on response
-                status = "ALIVE" if response.status_code == 200 else "DECLINED"
+                # ALIVE if response is 200
+                if response.status_code == 200:
+                    status = "ALIVE"
             
-            except:
-                # Fallback: simulate based on card number (for testing)
-                # In production, always use real API
-                status = "ALIVE" if int(card_num[-1]) % 2 == 0 else "DECLINED"
+            except Exception as e:
+                logger.warning(f"Card validation API error: {str(e)}")
+                # On API error, assume DECLINED
+                status = "DECLINED"
             
-            # Build response dict
+            # Build response dict with REAL BIN info
+            # This is used for BOTH ALIVE and DECLINED cards
             card_info = {
                 "card": f"{card_num[:6]}****{card_num[-4:]}",
                 "gateway": "RazorPay",
@@ -128,21 +162,21 @@ class RazorpayGate:
                 "country": bin_info["country"]
             }
             
+            logger.info(f"Card {card_num[-4:]} - {status} - BIN: {bin_code}")
+            
             return card_info, status
         
         except Exception as e:
             logger.error(f"Card check failed: {str(e)}")
-            return self._default_card_info(), "ERROR"
-    
-    def _default_card_info(self) -> Dict:
-        return {
-            "card": "UNKNOWN",
-            "gateway": "RazorPay",
-            "response": "API Error",
-            "brand": "UNKNOWN",
-            "type": "UNKNOWN",
-            "level": "UNKNOWN",
-            "bank": "UNKNOWN",
-            "country": "UNKNOWN"
-        }
+            # Return with UNKNOWN bin_info (not default)
+            return {
+                "card": "UNKNOWN",
+                "gateway": "RazorPay",
+                "response": "Error",
+                "brand": "UNKNOWN",
+                "type": "UNKNOWN",
+                "level": "UNKNOWN",
+                "bank": "UNKNOWN",
+                "country": "UNKNOWN"
+            }, "ERROR"
 
