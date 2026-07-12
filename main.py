@@ -10,7 +10,6 @@ from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 import asyncio
 
@@ -35,7 +34,7 @@ if not BOT_TOKEN:
 
 bot = Bot(
     token=BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+    parse_mode=ParseMode.HTML
 )
 dp = Dispatcher()
 db = Database()
