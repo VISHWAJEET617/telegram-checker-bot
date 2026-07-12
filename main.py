@@ -13,6 +13,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.enums import ParseMode
 import asyncio
+import sys
 
 from db import Database
 from keyboards import home_keyboard, profile_keyboard, gates_keyboard, plans_keyboard, help_keyboard, back_button
@@ -34,14 +35,22 @@ logger = logging.getLogger(__name__)
 class CheckState(StatesGroup):
     waiting_for_mass_file = State()
 
+# Load environment variables
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
 OWNER_NAME = os.getenv("OWNER_NAME", "Admin")
 DEVELOPER_NAME = os.getenv("DEVELOPER_NAME", "Developer")
 
+# Validate BOT_TOKEN
 if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN not found in .env file!")
+    logger.critical("❌ BOT_TOKEN environment variable not set!")
+    logger.critical("Please set BOT_TOKEN in Railway environment variables.")
+    logger.critical("Get your bot token from @BotFather on Telegram.")
+    sys.exit(1)
 
+logger.info("✅ BOT_TOKEN loaded successfully")
+
+# Initialize bot and dispatcher
 bot = Bot(
     token=BOT_TOKEN,
     parse_mode=ParseMode.HTML
@@ -167,26 +176,39 @@ async def callback_handler(callback: types.CallbackQuery, state: FSMContext):
 @dp.errors()
 async def error_handler(update, exception):
     """Handle errors gracefully"""
-    logger.error(f"Update {update}: {exception}")
+    logger.error(f"Update error: {exception}", exc_info=True)
 
 # ============= MAIN =============
 
 async def main():
     """Main function"""
+    logger.info("=" * 60)
     logger.info("🤖 Telegram Premium Checker Bot starting...")
+    logger.info("=" * 60)
     logger.info(f"Bot Owner: {OWNER_NAME}")
     logger.info(f"Developer: {DEVELOPER_NAME}")
     logger.info(f"Database: {db.db_path}")
+    logger.info(f"Total users: {db.get_all_users_count()}")
+    logger.info("=" * 60)
+    logger.info("✅ Bot is READY. Listening for messages...")
+    logger.info("=" * 60)
     
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
     except Exception as e:
-        logger.error(f"Fatal error: {e}")
+        logger.critical(f"Fatal error: {e}", exc_info=True)
     finally:
         await bot.session.close()
+        logger.info("Bot session closed")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Bot interrupted")
+    except Exception as e:
+        logger.critical(f"Startup error: {e}", exc_info=True)
+        sys.exit(1)
 
