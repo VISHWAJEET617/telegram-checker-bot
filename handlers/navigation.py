@@ -4,11 +4,14 @@ Navigation Handler - Screen Navigation
 Callback query handlers for menu navigation
 """
 
+import logging
 from aiogram import types
 from keyboards import (
     home_keyboard, profile_keyboard, gates_keyboard,
-    plans_keyboard, help_keyboard, back_button
+    plans_keyboard, help_keyboard
 )
+
+logger = logging.getLogger(__name__)
 
 async def profile_callback(callback: types.CallbackQuery, db):
     """Profile screen callback"""
@@ -57,7 +60,7 @@ async def plans_callback(callback: types.CallbackQuery):
         "<b>🎁 Free Plan</b>\n"
         "   Credits: 25\n"
         "   Single Check: ✅\n"
-        "   Mass Check: ❌\n\n"
+        "   Mass Check: ❌ (Limited to 10 cards)\n\n"
         "<b>⭐ Premium Plan</b>\n"
         "   Credits: 5000\n"
         "   Single Check: ✅\n"
@@ -65,7 +68,7 @@ async def plans_callback(callback: types.CallbackQuery):
         "<b>💎 Diamond Plan</b>\n"
         "   Credits: Unlimited\n"
         "   Single Check: ✅\n"
-        "   Mass Check: ✅ (1000 cards/check)"
+        "   Mass Check: ✅ (Unlimited)"
     )
     
     await callback.message.edit_text(plans_text, reply_markup=plans_keyboard())

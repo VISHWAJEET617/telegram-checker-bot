@@ -35,9 +35,9 @@ def gates_keyboard() -> InlineKeyboardMarkup:
 def plans_keyboard() -> InlineKeyboardMarkup:
     """Plans screen keyboard"""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎁 Free Plan (25 credits)", callback_data="free_plan")],
-        [InlineKeyboardButton(text="⭐ Premium (5000 credits)", callback_data="premium_plan")],
-        [InlineKeyboardButton(text="💎 Diamond (Unlimited)", callback_data="diamond_plan")],
+        [InlineKeyboardButton(text="🎁 Free Plan (25 credits)", callback_data="plan_free")],
+        [InlineKeyboardButton(text="⭐ Premium (5000 credits)", callback_data="plan_premium")],
+        [InlineKeyboardButton(text="💎 Diamond (Unlimited)", callback_data="plan_diamond")],
         [InlineKeyboardButton(text="◀️ Back", callback_data="back")],
     ])
 
@@ -78,5 +78,14 @@ def confirmation_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="✅ Confirm", callback_data="confirm"),
             InlineKeyboardButton(text="❌ Cancel", callback_data="cancel"),
         ],
+    ])
+
+def get_payment_plans_keyboard() -> InlineKeyboardMarkup:
+    """Payment plans keyboard"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎁 Free - ₹0", callback_data="plan_free")],
+        [InlineKeyboardButton(text="⭐ Premium - ₹499", callback_data="plan_premium")],
+        [InlineKeyboardButton(text="💎 Diamond - ₹999", callback_data="plan_diamond")],
+        [InlineKeyboardButton(text="◀️ Back", callback_data="back")],
     ])
 

@@ -4,8 +4,11 @@ Commands Handler - All Command Processors
 /help, /cmds, /stats, /profile handlers
 """
 
+import logging
 from aiogram import types
 from keyboards import help_keyboard
+
+logger = logging.getLogger(__name__)
 
 async def help_handler(message: types.Message):
     """Help command handler"""
@@ -15,10 +18,13 @@ async def help_handler(message: types.Message):
         "/help - This help message\n"
         "/cmds - All commands\n"
         "/profile - Your profile\n"
+        "/stats - Your statistics\n"
         "/rz - Single card check\n"
         "/mrz - Mass card check\n\n"
-        "Format: /rz 4111111111111111|12|25|123\n\n"
-        "Card Format: CARD|MM|YY|CVV\n"
+        "<b>Format for single check:</b>\n"
+        "/rz 4111111111111111|12|25|123\n\n"
+        "<b>Card Format:</b>\n"
+        "CARD|MM|YY|CVV\n"
         "Example: 4111111111111111|12|25|123"
     )
     await message.answer(help_text, reply_markup=help_keyboard())
@@ -31,12 +37,12 @@ async def cmds_handler(message: types.Message):
         "/start - Home\n"
         "/help - Help\n"
         "/profile - Profile\n"
+        "/stats - Statistics\n"
         "/cmds - This message\n\n"
         "<b>Checking Commands:</b>\n"
         "/rz CARD|MM|YY|CVV - Single check\n"
         "/mrz - Mass check mode\n\n"
         "<b>Info Commands:</b>\n"
-        "/stats - Your statistics\n"
         "/plans - Available plans\n"
         "/support - Get support"
     )
@@ -55,8 +61,12 @@ async def stats_handler(message: types.Message, db):
         f"<b>Credits:</b> {credits}\n"
         f"<b>Total Checks:</b> {stats['total_checks']}\n"
         f"<b>Alive Cards:</b> {stats['alive_checks']}\n"
-        f"<b>Total Spent:</b> {stats['total_spent']}"
+        f"<b>Total Spent:</b> {stats['total_spent']} credits\n"
     )
+    
+    if stats['total_checks'] > 0:
+        alive_rate = (stats['alive_checks'] / stats['total_checks']) * 100
+        stats_text += f"<b>Alive Rate:</b> {alive_rate:.1f}%"
     
     await message.answer(stats_text)
 
