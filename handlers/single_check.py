@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Single Check - ₹10 PER CHECK with BIN info"""
+"""Single Check - ₹10 PER CHECK (ONLY IF CARD WORKS)"""
 
 import logging
 import os
@@ -34,11 +34,8 @@ async def single_check_handler(message: types.Message, db):
         await message.answer("❌ Card invalid")
         return
     
-    # Check balance
+    # Check balance (only if card will be ALIVE)
     balance = db.get_user_balance(user_id)
-    if balance < 1000:
-        await message.answer(f"❌ Low balance: ₹{balance/100:.2f}\nNeed: ₹10")
-        return
     
     # Processing
     msg = await message.answer(f"⏳ Checking: {card_num[:6]}****{card_num[-4:]}")
@@ -47,37 +44,54 @@ async def single_check_handler(message: types.Message, db):
         # Check card
         card_info, status = await razorpay_gate.check_card_live(card_num, month, year, cvv)
         
-        # Deduct balance
-        db.deduct_balance(user_id, 1000)
+        # ONLY CHARGE IF ALIVE (VALID CARD)
+        if status == "ALIVE":
+            if balance < 1000:
+                await msg.edit_text(f"❌ Low balance: ₹{balance/100:.2f}\nNeed: ₹10")
+                return
+            
+            # Deduct balance ONLY for ALIVE cards
+            db.deduct_balance(user_id, 1000)
+            
+            # Log
+            db.log_check(user_id, card_num[-4:], status, "Payment successful", 1000)
+            
+            response = format_response(card_info, status)
+            await msg.edit_text(response)
+            
+            logger.info(f"✅ ALIVE: Charged ₹10")
         
-        # Log
-        db.log_check(user_id, card_num[-4:], status, "Payment successful", 1000)
-        
-        # Format response
-        response = format_response(card_info, status)
-        await msg.edit_text(response)
-        
-        logger.info(f"✅ Check done: {status}")
+        else:
+            # DEAD - NO CHARGE
+            db.log_check(user_id, card_num[-4:], status, card_info.get('response', 'Unknown'), 0)
+            
+            response = format_response(card_info, status)
+            await msg.edit_text(response)
+            
+            logger.info(f"❌ DECLINED: No charge")
     
     except Exception as e:
         await msg.edit_text(f"❌ ERROR: {str(e)}")
 
 def format_response(card_info: dict, status: str) -> str:
-    """Format response exactly as user wanted"""
+    """Format response"""
     
     if status == "ALIVE":
         charged = "💎 CHARGED\n💎 🟢 CHARGED 💎"
+        price_text = "₹10"
     elif status == "DEAD":
         charged = "⚠️ DECLINED\n⚠️ ❌ DECLINED ⚠️"
+        price_text = "FREE (No charge)"
     else:
         charged = "❌ ERROR\n❌ ❌ ERROR ❌"
+        price_text = "FREE (No charge)"
     
     return f"""{charged}
 ━━━━━━━━━━━━━━━━━
 💳 Card ➛ {card_info.get('card', 'UNKNOWN')}
 📌 Gateway ➛ {card_info.get('gateway', 'RazorPay')}
 📝 Response ➛ {card_info.get('response', 'Unknown')}
-💰 Price ➛ {card_info.get('price', '₹10')}
+💰 Price ➛ {price_text}
 ━━━━━━━━━━━━━━━━━
 🆔 BIN Information
 ├─ Brand ➛ {card_info.get('brand', 'UNKNOWN')}
