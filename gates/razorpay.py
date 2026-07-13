@@ -1,147 +1,177 @@
 #!/usr/bin/env python3
-"""
-Razorpay Gate - ₹10 PER CARD CHECK
-Real BIN/IIN info from Razorpay API
-"""
+"""Razorpay BIN Lookup & Card Checking"""
 
-import logging
-import os
 import requests
-from typing import Optional, Dict, Tuple
+import logging
+from typing import Tuple, Dict
 
 logger = logging.getLogger(__name__)
 
 class RazorpayGate:
-    """Razorpay - ₹10 PER CHECK with BIN info"""
+    """Razorpay API Gateway for BIN lookup & card validation"""
     
-    def __init__(self, key_id: Optional[str] = None, key_secret: Optional[str] = None):
-        self.key_id = key_id or os.getenv("RAZORPAY_KEY_ID")
-        self.key_secret = key_secret or os.getenv("RAZORPAY_KEY_SECRET")
-        
-        if not self.key_id or not self.key_secret:
-            raise ValueError("RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET required!")
-        
-        self.API_BASE = "https://api.razorpay.com/v1"
-        self.PRICE_PER_CHECK = 1000
-        logger.info("✅ Razorpay: ₹10 per check")
+    def __init__(self, key_id: str, key_secret: str):
+        self.key_id = key_id
+        self.key_secret = key_secret
+        self.base_url = "https://api.razorpay.com/v1"
+        self.bin_cache = {}  # Local cache - unlimited lookups
     
-    async def check_card_live(self, card_number: str, month: str, year: str, cvv: str) -> Tuple[Dict, str]:
-        """Card validation with BIN info"""
+    async def get_bin_info(self, bin_code: str) -> Dict:
+        """
+        Fetch BIN information from Razorpay API
+        Cache first, then API
+        ALWAYS returns real BIN info (never hardcoded defaults)
+        """
+        
+        # Check cache first (unlimited, instant)
+        if bin_code in self.bin_cache:
+            logger.debug(f"✓ BIN {bin_code} from CACHE")
+            return self.bin_cache[bin_code]
+        
         try:
-            bin_code = card_number[:6]
+            # Fetch from Razorpay API
+            url = f"{self.base_url}/iins/{bin_code}"
             
             response = requests.get(
-                f"{self.API_BASE}/iins",
-                params={"iins": bin_code},
+                url,
                 auth=(self.key_id, self.key_secret),
-                timeout=10
+                timeout=5
             )
             
-            if response.status_code != 200:
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Extract BIN info
+                iin_data = data.get("iin", {})
+                bin_info = {
+                    "brand": iin_data.get("network", "UNKNOWN").upper(),
+                    "type": iin_data.get("type", "UNKNOWN").upper(),
+                    "level": iin_data.get("sub_type", "CLASSIC").upper(),
+                    "bank": iin_data.get("issuer_name", "UNKNOWN"),
+                    "country": iin_data.get("issuer_country", "UNKNOWN"),
+                }
+                
+                # Cache it
+                self.bin_cache[bin_code] = bin_info
+                logger.info(f"✓ BIN {bin_code} from API (cached)")
+                return bin_info
+            
+            else:
+                logger.warning(f"✗ BIN API error: {response.status_code}")
+                # TRY AGAIN if first attempt fails
+                try:
+                    response = requests.get(
+                        url,
+                        auth=(self.key_id, self.key_secret),
+                        timeout=3
+                    )
+                    if response.status_code == 200:
+                        data = response.json()
+                        iin_data = data.get("iin", {})
+                        bin_info = {
+                            "brand": iin_data.get("network", "UNKNOWN").upper(),
+                            "type": iin_data.get("type", "UNKNOWN").upper(),
+                            "level": iin_data.get("sub_type", "CLASSIC").upper(),
+                            "bank": iin_data.get("issuer_name", "UNKNOWN"),
+                            "country": iin_data.get("issuer_country", "UNKNOWN"),
+                        }
+                        self.bin_cache[bin_code] = bin_info
+                        return bin_info
+                except:
+                    pass
+                
+                # Return UNKNOWN, NOT hardcoded defaults
                 return {
-                    "card": f"{bin_code}****{card_number[-4:]}",
-                    "status": "❌ DEAD",
-                    "response": "Card not found",
-                    "gateway": "RazorPay",
-                    "price": "₹10",
                     "brand": "UNKNOWN",
                     "type": "UNKNOWN",
                     "level": "UNKNOWN",
                     "bank": "UNKNOWN",
                     "country": "UNKNOWN"
-                }, "DEAD"
-            
-            data = response.json()
-            iins_data = data.get("iins", {}).get(bin_code, {})
-            
-            if not iins_data:
-                return {
-                    "card": f"{bin_code}****{card_number[-4:]}",
-                    "status": "❌ DEAD",
-                    "response": "Card not found",
-                    "gateway": "RazorPay",
-                    "price": "₹10",
-                    "brand": "UNKNOWN",
-                    "type": "UNKNOWN",
-                    "level": "UNKNOWN",
-                    "bank": "UNKNOWN",
-                    "country": "UNKNOWN"
-                }, "DEAD"
-            
-            # Parse BIN info
-            card_brand = iins_data.get("network", "UNKNOWN").upper()
-            card_type = iins_data.get("type", "UNKNOWN").upper()
-            issuer_name = iins_data.get("issuer_name", "UNKNOWN")
-            sub_type = iins_data.get("sub_type", "").upper()
-            country_code = iins_data.get("country_code", "")
-            
-            card_level = get_card_level(card_brand, sub_type)
-            country_name, country_emoji = get_country_info(country_code)
-            
-            # Validate expiry
-            current_year, current_month = 26, 7
-            exp_month, exp_year = int(month), int(year)
-            
-            if exp_year < current_year or (exp_year == current_year and exp_month < current_month):
-                return {
-                    "card": f"{bin_code}****{card_number[-4:]}",
-                    "status": "❌ DEAD",
-                    "response": "Card expired",
-                    "gateway": "RazorPay",
-                    "price": "₹10",
-                    "brand": card_brand,
-                    "type": card_type,
-                    "level": card_level,
-                    "bank": issuer_name,
-                    "country": f"{country_name} {country_emoji}"
-                }, "DEAD"
-            
-            logger.info(f"✅ Card valid: {card_brand}")
-            return {
-                "card": f"{bin_code}****{card_number[-4:]}",
-                "status": "✅ ALIVE",
-                "response": "Card valid and active",
-                "gateway": "RazorPay",
-                "price": "₹10",
-                "brand": card_brand,
-                "type": card_type,
-                "level": card_level,
-                "bank": issuer_name,
-                "country": f"{country_name} {country_emoji}"
-            }, "ALIVE"
+                }
         
         except Exception as e:
-            logger.error(f"❌ Error: {e}")
-            return {"status": "❌ ERROR", "response": str(e), "gateway": "RazorPay"}, "ERROR"
-
-def get_card_level(brand: str, sub_type: str) -> str:
-    """Card level detection"""
-    sub_type = sub_type.lower()
-    if "gold" in sub_type:
-        return "GOLD"
-    elif "platinum" in sub_type:
-        return "PLATINUM"
-    elif "premium" in sub_type:
-        return "PREMIUM"
-    else:
-        return "CLASSIC"
-
-def get_country_info(country_code: str) -> Tuple[str, str]:
-    """Country name and emoji"""
-    countries = {
-        "IN": ("INDIA", "🇮🇳"),
-        "US": ("UNITED STATES", "🇺🇸"),
-        "GB": ("UNITED KINGDOM", "🇬🇧"),
-        "CA": ("CANADA", "🇨🇦"),
-        "AU": ("AUSTRALIA", "🇦🇺"),
-        "SG": ("SINGAPORE", "🇸🇬"),
-        "JP": ("JAPAN", "🇯🇵"),
-        "DE": ("GERMANY", "🇩🇪"),
-        "FR": ("FRANCE", "🇫🇷"),
-        "BR": ("BRAZIL", "🇧🇷"),
-        "AE": ("UAE", "🇦🇪"),
-    }
-    if country_code and country_code.upper() in countries:
-        return countries[country_code.upper()]
-    return ("UNKNOWN", "🌍")
+            logger.error(f"✗ BIN fetch failed: {str(e)}")
+            # Return UNKNOWN, NOT hardcoded defaults
+            return {
+                "brand": "UNKNOWN",
+                "type": "UNKNOWN",
+                "level": "UNKNOWN",
+                "bank": "UNKNOWN",
+                "country": "UNKNOWN"
+            }
+    
+    async def check_card_live(self, card_num: str, month: str, year: str, cvv: str) -> Tuple[Dict, str]:
+        """
+        Check if card is ALIVE or DECLINED
+        ALWAYS fetch real BIN info regardless of status
+        
+        Returns:
+            (card_info_dict, status) where status = "ALIVE" or "DECLINED"
+        """
+        
+        try:
+            # Get BIN code
+            bin_code = card_num[:6]
+            
+            # ALWAYS fetch real BIN info (from cache or API)
+            # This ensures DECLINED cards show their real BIN, not defaults
+            bin_info = await self.get_bin_info(bin_code)
+            
+            # Validate card with Razorpay
+            payload = {
+                "card_number": card_num,
+                "cvv": cvv,
+                "expiry_month": month,
+                "expiry_year": f"20{year}",
+            }
+            
+            url = f"{self.base_url}/cards/validation"
+            
+            status = "DECLINED"  # Default to DECLINED
+            
+            try:
+                response = requests.post(
+                    url,
+                    json=payload,
+                    auth=(self.key_id, self.key_secret),
+                    timeout=5
+                )
+                
+                # ALIVE if response is 200
+                if response.status_code == 200:
+                    status = "ALIVE"
+            
+            except Exception as e:
+                logger.warning(f"Card validation API error: {str(e)}")
+                status = "DECLINED"
+            
+            # Build response dict with REAL BIN info
+            # This is used for BOTH ALIVE and DECLINED cards
+            card_info = {
+                "card": f"{card_num[:6]}****{card_num[-4:]}",
+                "gateway": "RazorPay",
+                "response": "Payment Successfully" if status == "ALIVE" else "Card Declined",
+                "brand": bin_info["brand"],
+                "type": bin_info["type"],
+                "level": bin_info["level"],
+                "bank": bin_info["bank"],
+                "country": bin_info["country"]
+            }
+            
+            logger.info(f"Card {card_num[-4:]} - {status} - BIN: {bin_code}")
+            
+            return card_info, status
+        
+        except Exception as e:
+            logger.error(f"Card check failed: {str(e)}")
+            return {
+                "card": "UNKNOWN",
+                "gateway": "RazorPay",
+                "response": "Error",
+                "brand": "UNKNOWN",
+                "type": "UNKNOWN",
+                "level": "UNKNOWN",
+                "bank": "UNKNOWN",
+                "country": "UNKNOWN"
+            }, "ERROR"
 

@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""Single Check - ₹10 PER CHECK (ONLY IF CARD WORKS)"""
+"""Single Card Check - /rz with exact UI"""
 
 import logging
 import os
+import asyncio
 from aiogram import types
 from gates.razorpay import RazorpayGate
 
 logger = logging.getLogger(__name__)
 
 razorpay_gate = RazorpayGate(
-    key_id=os.getenv("RAZORPAY_KEY_ID"),
-    key_secret=os.getenv("RAZORPAY_KEY_SECRET")
+    key_id=os.getenv("RAZORPAY_KEY_ID", ""),
+    key_secret=os.getenv("RAZORPAY_KEY_SECRET", "")
 )
 
 async def single_check_handler(message: types.Message, db):
@@ -22,82 +23,100 @@ async def single_check_handler(message: types.Message, db):
         return
     
     try:
-        card_num, month, year, cvv = args[1].split("|")
+        card_data = args[1].strip()
+        parts = card_data.split("|")
+        if len(parts) != 4:
+            raise ValueError("Invalid format")
+        card_num, month, year, cvv = parts
     except:
         await message.answer("❌ Format: CARD|MM|YY|CVV")
         return
     
     user_id = message.from_user.id
     
-    # Validate
+    # Validate card
     if not card_num.isdigit() or len(card_num) < 13:
         await message.answer("❌ Card invalid")
         return
     
-    # Check balance (only if card will be ALIVE)
-    balance = db.get_user_balance(user_id)
+    if not month.isdigit() or not (1 <= int(month) <= 12):
+        await message.answer("❌ Invalid month (01-12)")
+        return
     
-    # Processing
+    if not year.isdigit() or len(year) != 2:
+        await message.answer("❌ Invalid year (YY format)")
+        return
+    
+    if not cvv.isdigit() or len(cvv) not in [3, 4]:
+        await message.answer("❌ Invalid CVV")
+        return
+    
+    # Check balance
+    balance = db.get_user_balance(user_id)
+    if balance < 1000:
+        await message.answer(f"❌ Insufficient balance: ₹{balance/100:.2f}")
+        return
+    
+    # Show processing
     msg = await message.answer(f"⏳ Checking: {card_num[:6]}****{card_num[-4:]}")
     
     try:
-        # Check card
+        # Check card with Razorpay
         card_info, status = await razorpay_gate.check_card_live(card_num, month, year, cvv)
         
-        # ONLY CHARGE IF ALIVE (VALID CARD)
+        # Only charge if ALIVE
         if status == "ALIVE":
-            if balance < 1000:
-                await msg.edit_text(f"❌ Low balance: ₹{balance/100:.2f}\nNeed: ₹10")
-                return
-            
-            # Deduct balance ONLY for ALIVE cards
+            # Deduct balance
             db.deduct_balance(user_id, 1000)
             
-            # Log
-            db.log_check(user_id, card_num[-4:], status, "Payment successful", 1000)
+            # Log transaction
+            db.log_check(user_id, card_num[-4:], status, "Payment Successfully", 1000)
             
-            response = format_response(card_info, status)
-            await msg.edit_text(response)
-            
-            logger.info(f"✅ ALIVE: Charged ₹10")
-        
-        else:
-            # DEAD - NO CHARGE
-            db.log_check(user_id, card_num[-4:], status, card_info.get('response', 'Unknown'), 0)
-            
-            response = format_response(card_info, status)
-            await msg.edit_text(response)
-            
-            logger.info(f"❌ DECLINED: No charge")
-    
-    except Exception as e:
-        await msg.edit_text(f"❌ ERROR: {str(e)}")
-
-def format_response(card_info: dict, status: str) -> str:
-    """Format response"""
-    
-    if status == "ALIVE":
-        charged = "💎 CHARGED\n💎 🟢 CHARGED 💎"
-        price_text = "₹10"
-    elif status == "DEAD":
-        charged = "⚠️ DECLINED\n⚠️ ❌ DECLINED ⚠️"
-        price_text = "FREE (No charge)"
-    else:
-        charged = "❌ ERROR\n❌ ❌ ERROR ❌"
-        price_text = "FREE (No charge)"
-    
-    return f"""{charged}
+            # Format response - CHARGED
+            response = f"""💎 🟢 CHARGED 💎
 ━━━━━━━━━━━━━━━━━
-💳 Card ➛ {card_info.get('card', 'UNKNOWN')}
-📌 Gateway ➛ {card_info.get('gateway', 'RazorPay')}
-📝 Response ➛ {card_info.get('response', 'Unknown')}
-💰 Price ➛ {price_text}
+💳 Card ➛ {card_num}|{month}|{year}|{cvv}
+📌 Gateway ➛ RazorPay
+📝 Response ➛ Payment Successfully
+💰 Price ➛ ₹10
 ━━━━━━━━━━━━━━━━━
 🆔 BIN Information
-├─ Brand ➛ {card_info.get('brand', 'UNKNOWN')}
-├─ Type ➛ {card_info.get('type', 'UNKNOWN')}
-├─ Level ➛ {card_info.get('level', 'UNKNOWN')}
-├─ Bank ➛ {card_info.get('bank', 'UNKNOWN')}
-└─ Country ➛ {card_info.get('country', 'UNKNOWN')}
+├─ Brand ➛ {card_info['brand']}
+├─ Type ➛ {card_info['type']}
+├─ Level ➛ {card_info['level']}
+├─ Bank ➛ {card_info['bank']}
+└─ Country ➛ {card_info['country']}
 ━━━━━━━━━━━━━━━━━"""
+            
+            logger.info(f"✅ CHARGED: {user_id} | {card_num[-4:]} | ₹10")
+        
+        else:
+            # DECLINED - NO CHARGE
+            # Log transaction (cost=0)
+            db.log_check(user_id, card_num[-4:], status, "Card Declined", 0)
+            
+            # Format response - DECLINED
+            response = f"""💎 🔴 DECLINED 💎
+━━━━━━━━━━━━━━━━━
+💳 Card ➛ {card_num}|{month}|{year}|{cvv}
+📌 Gateway ➛ RazorPay
+📝 Response ➛ Card Declined
+💰 Price ➛ ₹10
+━━━━━━━━━━━━━━━━━
+🆔 BIN Information
+├─ Brand ➛ {card_info['brand']}
+├─ Type ➛ {card_info['type']}
+├─ Level ➛ {card_info['level']}
+├─ Bank ➛ {card_info['bank']}
+└─ Country ➛ {card_info['country']}
+━━━━━━━━━━━━━━━━━"""
+            
+            logger.info(f"❌ DECLINED: {user_id} | {card_num[-4:]} | FREE")
+        
+        # Update message with result
+        await msg.edit_text(response)
+    
+    except Exception as e:
+        logger.error(f"Error checking card: {str(e)}")
+        await msg.edit_text(f"❌ Error: {str(e)}")
 
